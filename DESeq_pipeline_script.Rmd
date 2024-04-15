@@ -9,3 +9,82 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+```{r importing_data}
+
+counts <- read.table("rnaseq.txt", header= TRUE, row.names= 1)
+colData <- read.table("sampledata.txt", header= TRUE, row.names= 1, sep = "\t", stringsAsFactors= TRUE)
+
+countData <- as.matrix(counts[,-1]) #removes column with gene names
+dds <-DESeq2::DESeqDataSetFromMatrix(countData = countData, 
+                                     colData = colData, 
+                                     design = ~group)
+```
+```{r cleaning data}
+
+#columns of the count matrix and the rows of the 
+#column data (information about samples) are in the same order
+
+all(rownames(colData) %in% colnames(counts)) #needs to return TRUE
+all(rownames(colData) == colnames(counts)) #if FALSE we need to rearrange
+
+#selects all rows from counts (since there is no row index before the comma) 
+#and the columns in the order specified by rownames(colData)
+counts <- counts[, rownames(colData)]
+all(rownames(coldata) == colnames(counts)) #check again
+```
+
+
+```{r running_DESeq2}
+library("DESeq2")
+dds <- DESeqDataSetFromMatrix(countData = counts,
+                              colData = colData,
+                              design = ~ condition)
+dds
+res <- results(dds)
+res #showing results table
+res <- results(dds, contrast=c("condition","treated","untreated")) 
+#in multifactorial analysis this is the way to explicitly say which data 
+#you want to compare
+
+```
+
+```{r pre-filtering}
+#filtering rows with read number above 10
+smallestGroupSize <- 3
+keep <- rowSums(counts(dds) >= 10) >= smallestGroupSize
+dds <- dds[keep,]
+```
+
+```{r factors_setting}
+#setting up control level (untreated in this case), othervise alphabetical
+dds$condition <- factor(dds$condition, levels = c("untreated","treated"))
+#or
+dds$condition <- relevel(dds$condition, ref = "untreated")
+#condition is the design that we are using to group the rows
+```
+```{r logFC_shrinkage_estimate}
+resultsNames(dds) #to see what is the name of the variable we want to shrink
+resLFC <- lfcShrink(dds, coef="condition_treated_vs_untreated", type="apeglm")
+#we pass that variable to coef
+#apelgm is algorithm for shrinking
+resLFC
+```
+```{r p-adjusted_and_summary}
+resOrdered <- res[order(res$pvalue),] #ordering values acording to smallest p
+summary(res) #to see the amount of up and downregulated, outliers etc.
+res05 <- results(dds, alpha=0.05) #by default alpha is 0.1
+```
+
+```{r plots}
+plotMA(res, ylim=c(-2,2)) #coloured blue if p < 0.1
+
+#identifying names of genes that are blue
+idx <- identify(res$baseMean, res$log2FoldChange)
+rownames(res)[idx]
+
+
+#counts of reads for a single gene across the groups
+plotCounts(dds, gene="gene_row_name", intgroup="condition")
+
+
+
