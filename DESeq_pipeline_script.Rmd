@@ -86,5 +86,5 @@ rownames(res)[idx]
 #counts of reads for a single gene across the groups
 plotCounts(dds, gene="gene_row_name", intgroup="condition")
 
-
+```
 
